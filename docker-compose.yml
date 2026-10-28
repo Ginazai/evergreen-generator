@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Dentro del contenedor la ruta es siempre esta; la de Windows solo se usa en el volumen.
+      EVERGREEN_PROJECTS_DIR: /data/projects
+    volumes:
+      # En .env: EVERGREEN_PROJECTS_DIR=D:/Videos (barras normales)
+      - ${EVERGREEN_PROJECTS_DIR:-./projects}:/data/projects
+  gui:
+    extends: app
+    command: ["streamlit", "run", "src/evergreen/gui/app.py", "--server.address=0.0.0.0", "--server.port=8501", "--browser.gatherUsageStats=false"]
+    ports:
+      - "127.0.0.1:8501:8501"  # solo tu PC; no se expone a la red

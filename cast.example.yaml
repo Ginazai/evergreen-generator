@@ -1,0 +1,11 @@
+# Copia este archivo como cast.yaml en tu carpeta de proyectos (la de EVERGREEN_PROJECTS_DIR).
+# Si existe, todos los guiones usan SOLO estos personajes, con exactamente este nombre, aspecto y voz.
+characters:
+  - id: lola              # minúsculas, sin espacios
+    name: Lola
+    visual: patita amarilla con botas rojas
+    voice: aguda y alegre
+  - id: pipo
+    name: Pipo
+    visual: pato azul con gorra
+    voice: grave y tranquilo

@@ -1,0 +1,6 @@
+# Copia como voices.yaml en tu carpeta de proyectos. Sin este archivo se usan voces por defecto estables.
+# Los nombres son voces predefinidas de Gemini (en AI Studio puedes escucharlas).
+narrator: Charon
+characters:
+  lola: Puck
+  pipo: Kore

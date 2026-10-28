@@ -1,0 +1,4 @@
+# Copia como style.yaml en tu carpeta de proyectos. Sin él se usa un estilo infantil por defecto.
+# En inglés: los generadores de imágenes lo entienden mejor.
+style: children's picture book illustration, watercolor, soft pastel palette, friendly rounded shapes, simple background, no text
+negative: text, letters, watermark, realistic, scary, dark, blurry
