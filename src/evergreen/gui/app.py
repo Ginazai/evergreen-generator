@@ -48,6 +48,10 @@ EXAMPLES = {
     "style": "style.example.yaml",
 }
 CSS = Path(__file__).with_name("style.css")
+TOKENS = {
+    "light": "--accent:#1F6B4F;--surface:#fff",
+    "dark": "--accent:#3FA27A;--surface:#161A17",
+}
 for _m in (script_writer, voice_audio, visuals, assembly):
     _m.register()
 
@@ -366,7 +370,10 @@ def main() -> None:
     st.set_page_config(
         page_title="Evergreen", page_icon=":material/park:", layout="wide"
     )
-    st.html(f"<style>{CSS.read_text(encoding='utf-8')}</style>")
+    theme = (
+        st.context.theme.type or "light"
+    )  # shortcut: sin dato (p. ej. en pruebas) = claro
+    st.html(f"<style>:root{{{TOKENS[theme]}}}{CSS.read_text(encoding='utf-8')}</style>")
     config.load_settings()
     root = config.projects_dir()
     st.sidebar.markdown(BRAND, unsafe_allow_html=True)

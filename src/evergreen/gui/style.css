@@ -1,10 +1,10 @@
-/* Ajustes finos que el tema de Streamlit no cubre. Solo color de tema y tono, sin sombras ni degradados. */
+/* Ajustes finos que el tema de Streamlit no cubre (claro y oscuro). --accent y --surface los define app.py según el tema; el resto sale de currentColor. Sin sombras ni degradados. */
 .block-container { max-width: 1040px; padding-top: 2.5rem; }
 [data-testid="stSidebar"] .block-container { padding-top: 1.5rem; }
 
 /* marca */
 .brand { display: flex; align-items: center; gap: .6rem; margin: 0 0 1.5rem; font-weight: 600; font-size: 1.125rem; letter-spacing: -.01em; }
-.brand svg { width: 22px; height: 22px; fill: var(--primary-color, #1F6B4F); }
+.brand svg { width: 22px; height: 22px; fill: var(--accent); }
 
 /* título de página: sustantivo, no portada */
 h1 { letter-spacing: -.02em; }
@@ -12,18 +12,18 @@ h1 { letter-spacing: -.02em; }
 
 /* tira de etapas: el estado del video de un vistazo */
 .pipe { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; margin: .25rem 0 1.25rem; }
-.pipe .s { font-size: .8125rem; color: #55615a; }
-.pipe .s::before { content: ""; display: block; height: 6px; border-radius: 3px; margin-bottom: .4rem; background: #D5DDD3; }
-.pipe .s.done::before { background: var(--primary-color, #1F6B4F); }
+.pipe .s { font-size: .8125rem; color: color-mix(in srgb, currentColor 70%, transparent); }
+.pipe .s::before { content: ""; display: block; height: 6px; border-radius: 3px; margin-bottom: .4rem; background: color-mix(in srgb, currentColor 16%, transparent); }
+.pipe .s.done::before { background: var(--accent); }
 .pipe .s.run::before, .pipe .s.wait::before { background: #B7791F; }
-.pipe .s.fail::before { background: #B3261E; }
-.pipe .s.done { color: #16211B; }
+.pipe .s.fail::before { background: #C0392B; }
+.pipe .s.done { color: inherit; }
 .pipe b { font-weight: 500; }
 
 /* paneles de etapa: planos, con borde suave */
-[data-testid="stExpander"] details { border-color: #D5DDD3; background: #FFFFFF; }
+[data-testid="stExpander"] details { background: var(--surface); }
 [data-testid="stExpander"] summary { padding: .65rem .9rem; }
-[data-testid="stExpander"] summary:hover { background: #F1F5F0; }
+[data-testid="stExpander"] summary:hover { background: color-mix(in srgb, currentColor 5%, transparent); }
 
 /* YAML y JSON son código: monoespaciado solo ahí (claves cfg-*, raw, sec-*) */
 [class*="st-key-cfg-"] textarea, .st-key-raw textarea { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .8125rem; line-height: 1.5; }
