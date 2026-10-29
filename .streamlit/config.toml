@@ -1,0 +1,22 @@
+# Tema de la GUI. Streamlit lo lee desde la carpeta donde se ejecuta `streamlit run`.
+[client]
+toolbarMode = "minimal"      # sin botón Deploy
+
+[theme]
+codeTextColor = "#2F4A3C"
+base = "light"
+primaryColor = "#1F6B4F"     # pino: el único color de marca
+backgroundColor = "#F7F9F6"
+secondaryBackgroundColor = "#EAEFE9"
+textColor = "#16211B"
+borderColor = "#D5DDD3"
+baseRadius = "0.5rem"
+buttonRadius = "0.5rem"
+# Si no hay red, el navegador usa la sans-serif del sistema.
+font = "Geist:https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap, sans-serif"
+headingFontSizes = ["1.75rem", "1.25rem", "1.0625rem"]
+headingFontWeights = [600, 600, 600]
+showSidebarBorder = true
+
+[theme.sidebar]
+backgroundColor = "#F7F9F6"

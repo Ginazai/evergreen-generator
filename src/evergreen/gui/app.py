@@ -22,15 +22,32 @@ from evergreen import manifest as mf
 from evergreen.errors import EvergreenError
 
 STATUS = {
-    "pending": "⚪ pendiente", "running": "🔵 en curso", "awaiting_manual": "🟡 esperando paso manual",
-    "awaiting_approval": "🟠 esperando aprobación", "done": "🟢 lista", "failed": "🔴 falló",
+    "pending": ":gray-badge[pendiente]", "running": ":blue-badge[en curso]",
+    "awaiting_manual": ":orange-badge[paso manual]", "awaiting_approval": ":orange-badge[por aprobar]",
+    "done": ":green-badge[lista]", "failed": ":red-badge[falló]",
 }  # fmt: skip
+PIPE = {
+    "done": "done",
+    "running": "run",
+    "awaiting_manual": "wait",
+    "awaiting_approval": "wait",
+    "failed": "fail",
+}
+BRAND = (
+    '<div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 6 10h3l-4 6h4l-3 5h12l-3-5h4l-4-6h3z"/></svg>'
+    "Evergreen</div>"
+)
+HINTS = {
+    "EVERGREEN_VOICE_MODE": "gemini, piper o manual",
+    "EVERGREEN_IMAGE_MODE": "cloudflare o manual",
+}
 ITEM_STAGES = {"voice", "visuals", "characters", "scenes"}
 EXAMPLES = {
     "cast": "cast.example.yaml",
     "voices": "voices.example.yaml",
     "style": "style.example.yaml",
 }
+CSS = Path(__file__).with_name("style.css")
 for _m in (script_writer, voice_audio, visuals, assembly):
     _m.register()
 
@@ -78,10 +95,33 @@ def preview(video_dir: Path, stage: str, state: mf.StageState) -> None:
         st.error(state.error)
 
 
+def label(v, videos) -> str:
+    """El título; con el id solo si otro video se llama igual."""
+    return (
+        v.title
+        if sum(x.title == v.title for x in videos) == 1
+        else f"{v.title} ({v.id})"
+    )
+
+
+def pipeline(manifest: mf.Manifest) -> None:
+    """Tira de etapas: una barra por etapa, con su nombre; el color es el estado."""
+    stages = manifest.stages.items()
+    done = sum(s.status == mf.Status.done for _, s in stages)
+    cells = "".join(
+        f'<div class="s {"wait" if s.stale else PIPE.get(s.status.value, "")}"><b>{n}</b></div>'
+        for n, s in stages
+    )
+    st.markdown(
+        f'<div class="pipe" role="img" aria-label="{done} de {len(stages)} etapas listas">{cells}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def stage_panel(video_dir: Path, name: str, state: mf.StageState, busy: bool) -> None:
-    flag = " · ⚠️ desactualizada" if state.stale else ""
+    flag = " :orange-badge[desactualizada]" if state.stale else ""
     with st.expander(
-        f"{name} — {STATUS[state.status.value]}{flag}",
+        f"**{name}** {STATUS[state.status.value]}{flag}",
         expanded=state.status != mf.Status.done,
     ):
         preview(video_dir, name, state)
@@ -108,11 +148,9 @@ def stage_panel(video_dir: Path, name: str, state: mf.StageState, busy: bool) ->
                     f.getvalue()
                 )
                 st.success(f"Guardado {f.name}")
-        cols = st.columns(3)
-        with cols[0]:
+        with st.container(horizontal=True):
             if state.stale:
                 act("Mantener tal cual", f"keep-{name}", reopen.keep, video_dir, name)
-        with cols[1]:
             if state.status != mf.Status.pending and not busy:
                 act(
                     "Rehacer (archiva lo anterior)",
@@ -191,7 +229,10 @@ def edit_script(video_dir: Path, manifest: mf.Manifest) -> None:
 
 def video_page(root: Path) -> None:
     videos = project.list_videos(root)
-    with st.sidebar.expander("➕ Nuevo video", expanded=not videos), st.form("new"):
+    with (
+        st.sidebar.expander("Nuevo video", icon=":material/add:", expanded=not videos),
+        st.form("new"),
+    ):
         title = st.text_input("Título")
         fmt = st.selectbox("Formato", [f.value for f in mf.Format])
         lang = st.selectbox("Idioma", [x.value for x in mf.Language])
@@ -211,7 +252,7 @@ def video_page(root: Path) -> None:
     video_id = st.sidebar.selectbox(
         "Video",
         ids,
-        format_func=lambda i: next(v.title + f" ({i})" for v in videos if v.id == i),
+        format_func=lambda i: next(label(v, videos) for v in videos if v.id == i),
     )
     video_dir = root / video_id
     manifest = mf.load(video_dir / "manifest.yaml")
@@ -219,6 +260,7 @@ def video_page(root: Path) -> None:
     st.caption(
         f"{manifest.format.value} · {manifest.language.value} · {mf.aspect_of(manifest)}"
     )
+    pipeline(manifest)
     stale = [n for n, s in manifest.stages.items() if s.stale]
     if stale:
         st.warning(
@@ -230,7 +272,14 @@ def video_page(root: Path) -> None:
         if busy:
             live_log(video_dir)
         else:
-            act("▶ Ejecutar / continuar", "run", jobs.start, video_dir, type="primary")
+            act(
+                "Ejecutar / continuar",
+                "run",
+                jobs.start,
+                video_dir,
+                type="primary",
+                icon=":material/play_arrow:",
+            )
         for name, state in manifest.stages.items():
             stage_panel(video_dir, name, state, busy)
     with tab_edit:
@@ -247,28 +296,40 @@ def video_page(root: Path) -> None:
         edit_script(video_dir, manifest)
 
 
+def config_editor(root: Path, kind: str, example: str) -> None:
+    path = root / f"{kind}.yaml"
+    sample = Path(__file__).resolve().parents[3] / example
+    default = (
+        path.read_text(encoding="utf-8")
+        if path.is_file()
+        else (sample.read_text(encoding="utf-8") if sample.is_file() else "")
+    )
+    text = st.text_area(
+        f"{kind}.yaml",
+        default,
+        height=360,
+        key=f"cfg-{kind}",
+        label_visibility="collapsed",
+    )
+    if st.button(f"Guardar {kind}.yaml", key=f"save-{kind}", type="primary"):
+        affected, ok = attempt(editing.save_config, root, kind, text)
+        if ok:
+            st.success(
+                "Guardado."
+                + "".join(
+                    f" {v}: {', '.join(s)} desactualizadas."
+                    for v, s in affected.items()
+                )
+            )
+
+
 def config_page(root: Path) -> None:
     st.title("Elenco, voces y estilo")
     st.caption("Se comparten entre todos los videos de la carpeta de proyectos.")
-    for kind, example in EXAMPLES.items():
-        path = root / f"{kind}.yaml"
-        sample = Path(__file__).resolve().parents[3] / example
-        default = (
-            path.read_text(encoding="utf-8")
-            if path.is_file()
-            else (sample.read_text(encoding="utf-8") if sample.is_file() else "")
-        )
-        text = st.text_area(f"{kind}.yaml", default, height=220, key=f"cfg-{kind}")
-        if st.button(f"Guardar {kind}.yaml", key=f"save-{kind}"):
-            affected, ok = attempt(editing.save_config, root, kind, text)
-            if ok:
-                st.success(
-                    "Guardado."
-                    + "".join(
-                        f" {v}: {', '.join(s)} desactualizadas."
-                        for v, s in affected.items()
-                    )
-                )
+    tabs = st.tabs([f"{kind}.yaml" for kind in EXAMPLES])
+    for tab, (kind, example) in zip(tabs, EXAMPLES.items()):
+        with tab:
+            config_editor(root, kind, example)
 
 
 def settings_page() -> None:
@@ -282,7 +343,7 @@ def settings_page() -> None:
             secret = key in config.SECRET_KEYS
             values[key] = st.text_input(
                 key, "" if secret else current.get(key, ""), type="password" if secret else "default",
-                placeholder=config.mask(current.get(key, "")) if secret else "",
+                placeholder=config.mask(current.get(key, "")) if secret else HINTS.get(key, ""),
             )  # fmt: skip
             if secret and not values[key] and key in current:
                 values[key] = current[key]  # vacío = conservar la clave guardada
@@ -290,15 +351,30 @@ def settings_page() -> None:
     if saved:
         config.save_settings(values)
         st.success("Guardado. Para borrar una clave, elimina su línea de settings.env.")
-    st.write("ffmpeg:", "✅" if shutil.which("ffmpeg") else "❌ no instalado")
-    st.write("Carpeta de proyectos:", str(config.projects_dir()))
+    st.markdown(
+        "ffmpeg "
+        + (
+            ":green-badge[instalado]"
+            if shutil.which("ffmpeg")
+            else ":red-badge[no instalado]"
+        )
+    )
+    st.caption(f"Carpeta de proyectos: `{config.projects_dir()}`")
 
 
 def main() -> None:
-    st.set_page_config(page_title="Evergreen", page_icon="🌲", layout="wide")
+    st.set_page_config(
+        page_title="Evergreen", page_icon=":material/park:", layout="wide"
+    )
+    st.html(f"<style>{CSS.read_text(encoding='utf-8')}</style>")
     config.load_settings()
     root = config.projects_dir()
-    page = st.sidebar.radio("Sección", ["Videos", "Elenco, voces y estilo", "Ajustes"])
+    st.sidebar.markdown(BRAND, unsafe_allow_html=True)
+    page = st.sidebar.radio(
+        "Sección",
+        ["Videos", "Elenco, voces y estilo", "Ajustes"],
+        label_visibility="collapsed",
+    )
     {
         "Videos": lambda: video_page(root),
         "Elenco, voces y estilo": lambda: config_page(root),

@@ -15,7 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 piper = ["piper-tts==1.8.0"]
-gui = ["streamlit>=1.40,<2"]
+gui = ["streamlit>=1.66,<2"]  # 1.66: badges en etiquetas y contenedores horizontales
 dev = ["pytest==9.1.1", "pytest-cov==7.1.0", "ruff==0.17.1"]
 
 [project.scripts]
