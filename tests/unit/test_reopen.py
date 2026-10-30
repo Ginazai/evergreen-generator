@@ -130,6 +130,37 @@ def test_regenerate_item_archives_only_that_item(tmp_path):
     assert (archived / "inbox/escena-1-1.mp4").exists()
 
 
+def test_regenerate_items_archives_several_and_leaves_the_rest(tmp_path):
+    v = video(tmp_path)
+    d = v / "stages/voice"
+    for k in ("escena-1", "escena-2", "escena-3"):
+        (d / f"{k}.wav").write_text("x")
+    assert reopen.regenerate_items(
+        v, "voice", ["escena-1", "escena-3", "escena-1"]
+    ) == ["assembly"]
+    assert [p.name for p in d.glob("*.wav")] == ["escena-2.wav"]
+    (archived,) = (
+        d / "archive"
+    ).iterdir()  # un solo archivo de respaldo para todo el lote
+    assert sorted(p.name for p in archived.iterdir()) == [
+        "escena-1.wav",
+        "escena-3.wav",
+    ]
+    assert states(v)["voice"].status == mf.Status.pending
+
+
+def test_regenerate_items_is_all_or_nothing(tmp_path):
+    v = video(tmp_path)
+    d = v / "stages/voice"
+    (d / "escena-1.wav").write_text("x")
+    with pytest.raises(EvergreenError, match="No encuentro 'escena-9'"):
+        reopen.regenerate_items(v, "voice", ["escena-1", "escena-9"])
+    with pytest.raises(EvergreenError, match="al menos un elemento"):
+        reopen.regenerate_items(v, "voice", [])
+    assert (d / "escena-1.wav").exists() and not (d / "archive").exists()
+    assert states(v)["voice"].status == mf.Status.done
+
+
 @pytest.mark.parametrize("key", ["nada", "../manifest", "escena-1-"])
 def test_regenerate_item_rejects_unknown_or_unsafe_keys(tmp_path, key):
     v = video(tmp_path)

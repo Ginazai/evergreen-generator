@@ -138,14 +138,51 @@ def test_run_button_starts_background_job(tmp_path, monkeypatch):
     assert "script:" in jobs.read_log(v)
 
 
-def test_regenerate_one_item_from_the_panel(tmp_path, monkeypatch):
+def voice_under_review(tmp_path, monkeypatch, keys):
+    """Video largo con la voz lista pero sin aprobar (así queda tras `run`, por la puerta de revisión)."""
     v = long_video(tmp_path)
-    d = v / "stages/scenes"
-    (d / "escena-1-1.jpg").write_bytes(b"x")
-    (d / "images.json").write_text(
-        json.dumps([{"key": "escena-1-1", "image": "escena-1-1.jpg"}]), encoding="utf-8"
+    m = mf.load(v / "manifest.yaml")
+    m.stages["voice"].status = mf.Status.awaiting_approval
+    mf.save(m, v / "manifest.yaml")
+    d = v / "stages/voice"
+    for k in keys:
+        (d / f"{k}.wav").write_bytes(b"x")
+    (d / "timeline.json").write_text(
+        json.dumps([{"scene_id": k, "file": f"{k}.wav"} for k in keys]),
+        encoding="utf-8",
+    )
+    started = []
+    monkeypatch.setattr(jobs, "start", started.append)  # sin lanzar un proceso real
+    return v, d, started
+
+
+def test_regenerate_some_items_while_the_stage_awaits_approval(tmp_path, monkeypatch):
+    v, d, started = voice_under_review(
+        tmp_path, monkeypatch, ["escena-1", "escena-2", "escena-3"]
     )
     app = at(tmp_path, monkeypatch)
-    button(app, "Regenerar este").click()
+    app.multiselect(key="sel-voice").set_value(["escena-1", "escena-3"]).run()
+    button(app, "Regenerar 2 y ejecutar").click()
     app.run()
-    assert not (d / "escena-1-1.jpg").exists() and (d / "archive").exists()
+    assert not app.exception and not app.error
+    assert not (d / "escena-1.wav").exists() and not (d / "escena-3.wav").exists()
+    assert (d / "escena-2.wav").exists()  # la buena no se toca
+    assert mf.load(v / "manifest.yaml").stages["voice"].status == mf.Status.pending
+    assert started == [v]  # y se retoma la etapa sin otro clic
+
+
+def test_nothing_selected_offers_no_action_and_does_not_touch_files(
+    tmp_path, monkeypatch
+):
+    _, d, started = voice_under_review(tmp_path, monkeypatch, ["escena-1"])
+    app = at(tmp_path, monkeypatch)
+    assert not [b for b in app.button if "Regenerar" in b.label]
+    assert (d / "escena-1.wav").exists() and not started
+
+
+def test_theme_tokens_are_resolved_by_the_browser_not_the_server():
+    """Regresión: Streamlit no avisa al servidor al cambiar de tema, así que --accent y --surface
+    calculados con st.context.theme se quedaban en el tema anterior."""
+    css = Path(APP).with_name("style.css").read_text(encoding="utf-8")
+    assert "--surface: light-dark(" in css and "--accent: light-dark(" in css
+    assert "context.theme" not in Path(APP).read_text(encoding="utf-8")

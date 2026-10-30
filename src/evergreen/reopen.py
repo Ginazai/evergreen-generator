@@ -98,24 +98,34 @@ def keep(video_dir: Path, stage: str) -> None:
 KEY = re.compile(r"^[a-z0-9-]+$")
 
 
-def regenerate_item(video_dir: Path, stage: str, key: str) -> list[str]:
-    """Archiva solo los archivos de un elemento (`<clave>.*`) y deja la etapa pendiente: al correrla,
-    los adaptadores (reanudables) producen solo lo que falta. Devuelve las etapas que quedan desactualizadas."""
+def regenerate_items(video_dir: Path, stage: str, keys: list[str]) -> list[str]:
+    """Archiva solo los archivos de esos elementos (`<clave>.*`) y deja la etapa pendiente: al correrla,
+    los adaptadores (reanudables) producen solo lo que falta. Devuelve las etapas que quedan desactualizadas.
+    Todo o nada: si una clave no existe no se archiva ninguna."""
     path = video_dir / "manifest.yaml"
     manifest = mf.load(path)
     state = _state(manifest, stage)
     if state.status == mf.Status.running:
         raise EvergreenError(f"La etapa '{stage}' se está ejecutando.")
+    if not keys:
+        raise EvergreenError("Elige al menos un elemento.")
     stage_dir = video_dir / "stages" / stage
-    files = (
-        [p for d in (stage_dir, stage_dir / "inbox") for p in d.glob(f"{key}.*")]
-        if KEY.match(key)
-        else []
-    )
-    if not files:
-        raise EvergreenError(f"No encuentro '{key}' en la etapa '{stage}'.")
+    files = []
+    for key in dict.fromkeys(keys):
+        found = (
+            [p for d in (stage_dir, stage_dir / "inbox") for p in d.glob(f"{key}.*")]
+            if KEY.match(key)
+            else []
+        )
+        if not found:
+            raise EvergreenError(f"No encuentro '{key}' en la etapa '{stage}'.")
+        files += found
     archive_files(stage_dir, files)
     manifest.stages[stage] = mf.StageState(adapter=state.adapter)
     marked = mark_stale(manifest, DOWNSTREAM[manifest.format.value][stage])
     mf.save(manifest, path)
     return marked
+
+
+def regenerate_item(video_dir: Path, stage: str, key: str) -> list[str]:
+    return regenerate_items(video_dir, stage, [key])
