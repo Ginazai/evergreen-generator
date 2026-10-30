@@ -48,10 +48,6 @@ EXAMPLES = {
     "style": "style.example.yaml",
 }
 CSS = Path(__file__).with_name("style.css")
-TOKENS = {
-    "light": "--accent:#1F6B4F;--surface:#fff",
-    "dark": "--accent:#3FA27A;--surface:#161A17",
-}
 for _m in (script_writer, voice_audio, visuals, assembly):
     _m.register()
 
@@ -80,6 +76,12 @@ def items(video_dir: Path, stage: str) -> list[str]:
             rows = json.loads((d / name).read_text(encoding="utf-8"))
             return [Path(r[field]).stem for r in rows]
     return []
+
+
+def regenerate_and_run(video_dir: Path, stage: str, keys: list[str]) -> None:
+    """Archiva esos elementos y retoma la etapa: los adaptadores solo producen lo que falta."""
+    reopen.regenerate_items(video_dir, stage, keys)
+    jobs.start(video_dir)
 
 
 def preview(video_dir: Path, stage: str, state: mf.StageState) -> None:
@@ -163,18 +165,25 @@ def stage_panel(video_dir: Path, name: str, state: mf.StageState, busy: bool) ->
                     video_dir,
                     name,
                 )
-        if name in ITEM_STAGES and state.status == mf.Status.done and not busy:
+        # También en "por aprobar": ahí es donde se revisa y se descubre qué salió mal.
+        reviewable = (mf.Status.done, mf.Status.awaiting_approval)
+        if name in ITEM_STAGES and state.status in reviewable and not busy:
             keys = items(video_dir, name)
             if keys:
-                key = st.selectbox("Regenerar solo uno", keys, key=f"sel-{name}")
-                act(
-                    "Regenerar este",
-                    f"item-{name}",
-                    reopen.regenerate_item,
-                    video_dir,
-                    name,
-                    key,
+                picked = st.multiselect(
+                    "Regenerar solo estos (los demás no se tocan ni gastan cuota)",
+                    keys,
+                    key=f"sel-{name}",
                 )
+                if picked:
+                    act(
+                        f"Regenerar {len(picked)} y ejecutar",
+                        f"item-{name}",
+                        regenerate_and_run,
+                        video_dir,
+                        name,
+                        picked,
+                    )
 
 
 @st.fragment(run_every=2)
@@ -370,10 +379,7 @@ def main() -> None:
     st.set_page_config(
         page_title="Evergreen", page_icon=":material/park:", layout="wide"
     )
-    theme = (
-        st.context.theme.type or "light"
-    )  # shortcut: sin dato (p. ej. en pruebas) = claro
-    st.html(f"<style>:root{{{TOKENS[theme]}}}{CSS.read_text(encoding='utf-8')}</style>")
+    st.html(f"<style>{CSS.read_text(encoding='utf-8')}</style>")
     config.load_settings()
     root = config.projects_dir()
     st.sidebar.markdown(BRAND, unsafe_allow_html=True)

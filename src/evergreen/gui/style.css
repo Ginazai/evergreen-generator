@@ -1,4 +1,6 @@
-/* Ajustes finos que el tema de Streamlit no cubre (claro y oscuro). --accent y --surface los define app.py según el tema; el resto sale de currentColor. Sin sombras ni degradados. */
+/* Ajustes finos que el tema de Streamlit no cubre (claro y oscuro). Sin sombras ni degradados.
+   El tema lo resuelve el navegador (light-dark() lee el color-scheme que Streamlit pone en stApp al instante); no se calcula en el servidor, que no se entera al cambiar de tema. */
+:root { --accent: light-dark(#1F6B4F, #3FA27A); --surface: light-dark(#fff, #161A17); }
 .block-container { max-width: 1040px; padding-top: 2.5rem; }
 [data-testid="stSidebar"] .block-container { padding-top: 1.5rem; }
 
