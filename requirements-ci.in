@@ -1,0 +1,8 @@
+# Extra tools for CI that are not project dependencies. The lock below also covers the
+# [dev,gui,piper] extras of pyproject.toml. After changing pyproject.toml or this file, regenerate:
+#   uv pip compile pyproject.toml requirements-ci.in --extra dev --extra gui --extra piper \
+#     --generate-hashes --no-build --python-version 3.12 --python-platform x86_64-manylinux_2_28 \
+#     -o requirements-ci.txt
+# shortcut: the lock is not re-checked against pyproject.toml in CI, so Dependabot bumps to
+# pyproject.toml need a manual regenerate; upgrade to a CI diff check if that bites.
+pip-audit
