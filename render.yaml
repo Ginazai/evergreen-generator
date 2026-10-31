@@ -1,0 +1,42 @@
+# Render Blueprint: the two services the pipeline deploys to (see docs/ci-cd.md).
+#
+# Both pull a prebuilt image from GHCR; CI/CD (not Render) decides when and which tag is
+# deployed, via each service's Deploy Hook. `autoDeployTrigger` has no effect on image-backed
+# services, so nothing here can deploy on its own.
+#
+# BEFORE creating the Blueprint:
+#   1. Replace OWNER/REPO below (lowercase) with your GitHub repo.
+#   2. The image must already exist: let CD publish once (a push to main), then create these.
+#   3. Private repo => the GHCR package is private. In Render: Account Settings -> Registry
+#      Credentials -> add ghcr.io + your GitHub username + a PAT with read:packages, then
+#      uncomment `creds` (name = the credential's name). Public package: leave it commented.
+services:
+  - type: web
+    name: evergreen-staging
+    runtime: image
+    plan: free            # no disk: smoke environment only, data is lost on restart
+    image:
+      url: ghcr.io/OWNER/REPO:latest
+      # creds:
+      #   fromRegistryCreds:
+      #     name: ghcr
+    healthCheckPath: /_stcore/health
+
+  - type: web
+    name: evergreen-production
+    runtime: image
+    # Starter is the smallest instance that can hold a disk; ffmpeg/Piper may need more RAM.
+    plan: starter
+    image:
+      url: ghcr.io/OWNER/REPO:latest   # the real tag is set per deploy by the pipeline (imgURL)
+      # creds:
+      #   fromRegistryCreds:
+      #     name: ghcr
+    healthCheckPath: /_stcore/health
+    # Without a disk every restart/deploy wipes videos, manifests and the API keys saved in the
+    # GUI. The image sets EVERGREEN_PROJECTS_DIR=/data/projects, so mounting /data keeps it all.
+    # A disk means ~seconds of downtime per deploy and a single instance (no scaling).
+    disk:
+      name: evergreen-data
+      mountPath: /data
+      sizeGB: 10

@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    # A merged promotion PR only changes deploy/production.yml. Skipping CI for it stops
+    # CI -> CD from rebuilding and opening yet another promotion PR (an endless loop).
+    # A push that touches anything else still runs CI, since this only skips when ALL files match.
+    paths-ignore: ["deploy/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# New pushes to a PR cancel the superseded run; runs on main always finish.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHON_VERSION: "3.12"  # matches Dockerfile (FROM python:3.12-slim)
+
+jobs:
+  lint:
+    name: Lint + format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      # ruff is pinned in pyproject's [dev] extra, so CI and local use the same version.
+      - run: pip install -e ".[dev]"
+      - run: ruff check . --output-format=github
+      - run: ruff format --check .
+
+  # Tests run INSIDE the image that ships to Render. Reasons: ffmpeg is already there (the
+  # assembly tests silently skip without it, which would hollow out the coverage gate), and
+  # it is the same command the README documents for development.
+  image:
+    name: Docker · build, tests, smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          push: false
+          platforms: linux/amd64   # Render only runs linux/amd64 images
+          tags: evergreen:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # Coverage gate (fail_under = 85) lives in pyproject.toml [tool.coverage.report].
+      - name: Tests + coverage
+        run: docker run --rm evergreen:ci pytest --cov=evergreen --cov-report=term-missing
+      - name: Smoke test (GUI answers on $PORT like it will on Render)
+        run: bash scripts/ci/smoke-test.sh   # via bash: does not depend on the git exec bit
+
+  dependency-audit:
+    name: Dependency vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install -e ".[gui,piper]" pip-audit
+      # Blocking: the baseline was clean when this pipeline was added.
+      - run: pip-audit --progress-spinner off --skip-editable
+
+  # ──────────────────── Single required status check ─────────────────
+  # Make THIS the only required check in branch protection. Adding or renaming jobs above
+  # then never needs a branch-protection change.
+  ci-gate:
+    name: CI gate
+    if: ${{ always() }}
+    needs: [lint, image, dependency-audit]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          case " $RESULTS " in
+            *" failure "*|*" cancelled "*) echo "::error::CI failed"; exit 1 ;;
+          esac

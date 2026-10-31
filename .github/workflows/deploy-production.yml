@@ -1,0 +1,105 @@
+name: Deploy production
+
+# GitOps-style production deploys: the version running in production is whatever
+# deploy/production.yml says on main. That file only changes through a pull request,
+# and this workflow only deploys a change that provably came from one that was reviewed.
+#
+#   cd.yml                  opens/updates the "promotion" PR after staging passes
+#   a human                 reviews + approves + merges it
+#   deploy-production.yml   (this file) verifies the approval, then deploys + soaks
+#
+# THE GATE IS ENFORCED HERE, IN CODE, so it works on any GitHub plan. On a public repo (or a
+# paid plan) ALSO turn on branch protection for main so an unapproved PR can't be merged at
+# all; see docs/ci-cd.md. Without branch protection an unapproved merge still can't
+# deploy (this workflow fails closed) but the pin on main is then ahead of prod
+# until a follow-up PR fixes it.
+#
+# RETRY a failed deploy: re-run the failed run from the Actions tab (same commit, same checks).
+# ROLLBACK: Actions -> CD -> Run workflow -> image_tag=<older sha-xxxxxxx>. That opens a rollback
+# PR through the same review path.
+on:
+  push:
+    branches: [main]
+    paths: [deploy/production.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify promotion
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      deploy: ${{ steps.pin.outputs.deploy }}
+      tag: ${{ steps.pin.outputs.tag }}
+      pr_url: ${{ steps.gate.outputs.pr_url }}
+      approvers: ${{ steps.gate.outputs.approvers }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read the pinned tag
+        id: pin
+        run: |
+          set -euo pipefail
+          pin() { sed -n -E 's/^image_tag:[[:space:]]*"?([^"[:space:]#]+)"?.*/\1/p' | head -1; }
+          tag=$(pin < deploy/production.yml)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [ "$tag" = none ] || [ -z "$tag" ]; then
+            echo "::notice title=Nothing to deploy::deploy/production.yml has no promoted tag yet."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # A newer promotion may have merged while this run was queued: only the newest pin deploys.
+          git fetch --no-tags --depth=1 origin main
+          latest=$(git show origin/main:deploy/production.yml | pin)
+          if [ "$latest" != "$tag" ]; then
+            echo "::notice title=Superseded::main now pins ${latest}; skipping ${tag}."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the change came from an approved, merged PR
+        id: gate
+        if: ${{ steps.pin.outputs.deploy == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=Production deploy blocked::$1"; exit 1; }
+          # The PR whose merge produced exactly this commit (squash, merge or rebase).
+          pr=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+                 --jq "[.[] | select(.merged_at != null and .base.ref == \"main\" and .merge_commit_sha == \"${GITHUB_SHA}\")] | .[0] | .number // empty")
+          [ -n "$pr" ] || fail "deploy/production.yml changed in ${GITHUB_SHA::7} without a merged pull request (direct push?). Change it through a promotion PR."
+          author=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr}" --jq .user.login)
+          head=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr}" --jq .head.sha)
+          # Each human reviewer's LATEST decision, on the LATEST commit, who is not the PR author.
+          approvers=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr}/reviews" --jq '.[]' \
+            | jq -rs --arg head "$head" --arg author "$author" '
+                map(select(.user.type == "User" and .user.login != $author
+                           and (.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")))
+                | group_by(.user.login) | map(sort_by(.submitted_at) | last)
+                | map(select(.state == "APPROVED" and .commit_id == $head) | .user.login)
+                | join(", ")')
+          [ -n "$approvers" ] || fail "PR #${pr} was merged without an approving review on its final commit (approvals on earlier commits are stale; the author cannot approve their own PR)."
+          url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${pr}"
+          echo "✓ PR #${pr} approved by: ${approvers}"
+          echo "pr_url=${url}" >> "$GITHUB_OUTPUT"
+          echo "approvers=${approvers}" >> "$GITHUB_OUTPUT"
+
+  production:
+    name: Production
+    needs: verify
+    if: ${{ needs.verify.outputs.deploy == 'true' }}
+    permissions:
+      contents: read
+      packages: read   # preflight: verify the image exists
+    uses: ./.github/workflows/deploy-render.yml
+    with:
+      environment: production
+      image_tag: ${{ needs.verify.outputs.tag }}
+      soak_minutes: 5   # keep probing health for 5 min after the deploy looks healthy
+      approved_by: ${{ needs.verify.outputs.approvers }}
+      change_url: ${{ needs.verify.outputs.pr_url }}
+    secrets: inherit
