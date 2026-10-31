@@ -33,3 +33,4 @@ Nada llega a producción sin un PR aprobado por otra persona. Rollback: *Actions
 - Las claves de Gemini/Cloudflare se guardan desde la propia GUI en `settings.env` dentro del disco; no hace falta ponerlas como variables en Render.
 - Si no quieres staging: en `cd.yml` borra el job `staging`, quita `staging` de `needs` en `promote` y borra la línea `(needs.staging.result == 'success' || github.event_name == 'workflow_dispatch') &&` de su `if`.
 - La cobertura mínima (85 %) vive en `pyproject.toml`; el job de imagen ejecuta `pytest` dentro de la imagen para que los tests de ffmpeg no se salten.
+- CI instala dependencias solo desde `requirements-ci.txt` (con hashes, `--only-binary`). Si cambias `pyproject.toml`, regenera el lock con el comando de la cabecera de `requirements-ci.in`; Dependabot también lo actualiza.

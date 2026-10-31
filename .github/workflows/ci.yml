@@ -33,9 +33,10 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: pyproject.toml
-      # ruff is pinned in pyproject's [dev] extra, so CI and local use the same version.
-      - run: pip install -e ".[dev]"
+          cache-dependency-path: requirements-ci.txt
+      # Hashed lockfile: every transitive dep is pinned and hash-verified, and --only-binary
+      # forbids running sdist setup.py/build scripts. The project itself needs no install to lint.
+      - run: "pip install --require-hashes --only-binary :all: -r requirements-ci.txt"
       - run: ruff check . --output-format=github
       - run: ruff format --check .
 
@@ -75,10 +76,11 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: pyproject.toml
-      - run: pip install -e ".[gui,piper]" pip-audit
-      # Blocking: the baseline was clean when this pipeline was added.
-      - run: pip-audit --progress-spinner off --skip-editable
+          cache-dependency-path: requirements-ci.txt
+      - run: "pip install --require-hashes --only-binary :all: -r requirements-ci.txt"
+      # Blocking: the baseline was clean when this pipeline was added. The environment is
+      # exactly the lockfile, so this audits the locked versions.
+      - run: pip-audit --progress-spinner off
 
   # ──────────────────── Single required status check ─────────────────
   # Make THIS the only required check in branch protection. Adding or renaming jobs above
